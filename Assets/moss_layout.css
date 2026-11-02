@@ -72,6 +72,7 @@
 }
 .moss-layout-box {
     position: absolute;
+    box-sizing: border-box;
     border: 2px solid var(--moss-color);
     background: color-mix(in srgb, var(--moss-color) 18%, transparent);
     cursor: move;
