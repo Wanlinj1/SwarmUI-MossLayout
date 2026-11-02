@@ -14,6 +14,12 @@ A visual editor for MOSS-Image Layout prompts in [SwarmUI](https://github.com/mc
 
 ![Four selected boxes inside a frame with scaling handles](Images/group.jpg)
 
+**Characters.** MOSS boxes are rectangles, so one figure often takes several. Ctrl+G joins them into a group with one shared prompt, added to the caption of each box when you Apply, so changing a character means editing one field.
+
+**Linked boxes.** Ctrl+L gives the selected boxes one caption: edit it in any of them and all change, while each box still moves on its own.
+
+**Autocompletion.** Captions and shared prompts use the same completion as the Swarm prompt box, including `<...>` tags that other extensions register. An extension that does more with prompt boxes can listen for `moss-layout-prompt-field` on `document`: the event's target is each new field.
+
 ## Install
 
 ```

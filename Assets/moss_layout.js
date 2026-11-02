@@ -219,6 +219,176 @@ class MossLayoutEditor {
         this.selection = index >= 0 ? [index] : [];
     }
 
+    /** Gives a field what Swarm gives its own prompt boxes: tag and <...> completion, including what other extensions register, and Ctrl+Up/Down weights. Other extensions can listen for moss-layout-prompt-field on document to add their own. */
+    connectPromptField(box) {
+        if (typeof textPromptAddKeydownHandler == 'function') {
+            textPromptAddKeydownHandler(box);
+            // Esc closes the list of suggestions, not the whole editor.
+            box.addEventListener('keydown', e => {
+                if (e.key == 'Escape' && promptTabComplete.popover) {
+                    promptTabComplete.popover = null;
+                    e.stopPropagation();
+                }
+            });
+        }
+        // A chosen suggestion sets the value from code, and then a browser may not send change.
+        box.addEventListener('blur', () => this.commit());
+        box.dispatchEvent(new CustomEvent('moss-layout-prompt-field', { bubbles: true }));
+    }
+
+    /** The list of suggestions belongs to a field that may be about to go. */
+    closeSuggestions() {
+        if (typeof promptTabComplete != 'undefined' && promptTabComplete.popover) {
+            promptTabComplete.popover.remove();
+            promptTabComplete.popover = null;
+        }
+    }
+
+    /** A group's letter on the canvas and in the list, or nothing for a box outside groups. */
+    groupLetter(item) {
+        let index = (this.draft.groups || []).findIndex(g => g.id == item.group);
+        return index < 0 ? '' : String.fromCharCode(65 + index % 26);
+    }
+
+    groupOf(item) {
+        return (this.draft.groups || []).find(g => g.id == item.group);
+    }
+
+    /** Boxes of a group go together: selecting one selects them all, with this one last. */
+    selectBox(i) {
+        let group = this.draft.items[i].group;
+        let members = [];
+        if (group !== undefined) {
+            this.draft.items.forEach((item, j) => {
+                if (item.group == group && j != i) {
+                    members.push(j);
+                }
+            });
+        }
+        this.selection = [...members, i];
+    }
+
+    /** Makes the selected boxes one group with a shared prompt. */
+    groupSelected() {
+        if (this.selection.length < 2) {
+            return;
+        }
+        this.draft.groups = this.draft.groups || [];
+        let id = Math.max(0, ...this.draft.groups.map(g => g.id)) + 1;
+        this.draft.groups.push({ id: id, caption: '' });
+        this.selection.forEach(i => this.draft.items[i].group = id);
+        this.afterGrouping();
+    }
+
+    /** Takes the selected boxes out of their groups. The shared prompt stays with the boxes that remain, or goes with the last of them. */
+    ungroupSelected() {
+        this.selection.forEach(i => delete this.draft.items[i].group);
+        this.afterGrouping();
+    }
+
+    afterGrouping() {
+        this.repeat = null;
+        this.pruneGroups();
+        this.render();
+        this.renderItemEditor();
+        this.commit();
+    }
+
+    pruneGroups() {
+        if (!this.draft.groups) {
+            return;
+        }
+        this.draft.groups = this.draft.groups.filter(g => this.draft.items.some(item => item.group == g.id));
+        if (!this.draft.groups.length) {
+            delete this.draft.groups;
+        }
+    }
+
+    /** Copies of a whole group become a new group, a separate character with the same text to start from. Copies of a part stay in the group. */
+    regroupCopies(copies) {
+        this.draft.groups = this.draft.groups || [];
+        let known = [...this.draft.groups, ...(this.clipboardGroups || [])];
+        let map = new Map();
+        for (let copy of copies) {
+            let old = copy.group;
+            if (old === undefined || map.has(old)) {
+                continue;
+            }
+            let wanted = copies.filter(c => c.group == old).length;
+            let there = this.draft.items.filter(item => item.group == old).length;
+            let source = known.find(g => g.id == old);
+            if (source && (wanted >= there)) {
+                let id = Math.max(0, ...this.draft.groups.map(g => g.id)) + 1;
+                this.draft.groups.push({ id: id, caption: source.caption });
+                map.set(old, id);
+            }
+            else {
+                map.set(old, source ? old : undefined);
+            }
+        }
+        for (let copy of copies) {
+            if (map.get(copy.group) !== undefined) {
+                copy.group = map.get(copy.group);
+            }
+            else {
+                delete copy.group;
+            }
+        }
+        // Copies of a whole set of linked boxes are linked to each other; a copy of a part stays linked to the rest.
+        let links = new Map();
+        let next = Math.max(0, ...this.draft.items.map(item => item.link || 0)) + 1;
+        for (let copy of copies) {
+            if (copy.link === undefined) {
+                continue;
+            }
+            if (!links.has(copy.link)) {
+                let whole = copies.filter(c => c.link == copy.link).length >= this.draft.items.filter(item => item.link == copy.link).length;
+                links.set(copy.link, whole ? next++ : copy.link);
+            }
+        }
+        for (let copy of copies) {
+            if (copy.link !== undefined) {
+                copy.link = links.get(copy.link);
+            }
+        }
+    }
+
+    /** The selected boxes get one caption: edit it in any of them and all change. They still move on their own. */
+    linkSelected() {
+        if (this.selection.length < 2) {
+            return;
+        }
+        let id = Math.max(0, ...this.draft.items.map(item => item.link || 0)) + 1;
+        let caption = this.draft.items[this.selected].caption;
+        this.selection.forEach(i => {
+            this.draft.items[i].link = id;
+            this.draft.items[i].caption = caption;
+        });
+        this.afterGrouping();
+    }
+
+    unlinkSelected() {
+        this.selection.forEach(i => delete this.draft.items[i].link);
+        this.afterGrouping();
+    }
+
+    linkedTo(item) {
+        return item.link === undefined ? [] : this.draft.items.filter(x => x.link == item.link);
+    }
+
+    pruneLinks() {
+        for (let item of this.draft.items) {
+            if (item.link !== undefined && this.linkedTo(item).length < 2) {
+                delete item.link;
+            }
+        }
+    }
+
+    copyToClipboard() {
+        this.clipboard = JSON.parse(JSON.stringify(this.selection.map(i => this.draft.items[i])));
+        this.clipboardGroups = JSON.parse(JSON.stringify(this.draft.groups || []));
+    }
+
     /** The smallest box around these boxes. */
     boundsOf(indices) {
         let boxes = indices.map(i => this.draft.items[i].bbox);
@@ -253,10 +423,11 @@ class MossLayoutEditor {
                             </div>
                             <div class="moss-layout-legend">
                                 <div class="moss-layout-legend-group"><b>Draw</b><div><kbd>Drag empty space</kbd> new box</div><div><kbd>Shift + drag</kbd> square</div></div>
-                                <div class="moss-layout-legend-group"><b>Select</b><div><kbd>Click</kbd> one box</div><div><kbd>Ctrl + click</kbd> add or remove</div><div><kbd>Ctrl + drag empty space</kbd> select with a frame</div><div><kbd>Ctrl+A</kbd> all</div><div><kbd>Click empty space</kbd> none</div></div>
+                                <div class="moss-layout-legend-group"><b>Select</b><div><kbd>Click</kbd> one box or group</div><div><kbd>Click it again</kbd> one box of the group</div><div><kbd>Ctrl + click</kbd> add or remove</div><div><kbd>Ctrl + drag empty space</kbd> select with a frame</div><div><kbd>Ctrl+A</kbd> all</div><div><kbd>Click empty space</kbd> none</div></div>
                                 <div class="moss-layout-legend-group"><b>Move</b><div><kbd>Drag</kbd> move the selection</div><div><kbd>Shift + drag</kbd> straight line</div><div><kbd>Arrows</kbd> 1 px</div><div><kbd>Shift + arrows</kbd> 16 px</div><div><kbd>Esc</kbd> cancel the drag</div></div>
                                 <div class="moss-layout-legend-group"><b>Copy</b><div><kbd>Alt or Ctrl + drag</kbd> copy</div><div><kbd>Alt + Shift + drag</kbd> copy in a straight line</div><div><kbd>Ctrl+D</kbd> copy again by the same step</div><div><kbd>Ctrl+C / X / V</kbd> copy, cut, paste</div></div>
                                 <div class="moss-layout-legend-group"><b>Resize</b><div><kbd>Drag a handle</kbd> resize</div><div><kbd>Shift + corner</kbd> keep the ratio</div><div><kbd>Alt + handle</kbd> from the center</div><div><kbd>Handles of a group</kbd> scale all of it</div></div>
+                                <div class="moss-layout-legend-group"><b>Character</b><div><kbd>Ctrl+G</kbd> group the selection, one shared prompt</div><div><kbd>Ctrl+Shift+G</kbd> ungroup</div><div><kbd>Ctrl+L</kbd> link captions: edit one, all change</div><div><kbd>Ctrl+Shift+L</kbd> unlink</div></div>
                                 <div class="moss-layout-legend-group"><b>Edit</b><div><kbd>Ctrl+Z / Ctrl+Y</kbd> undo, redo</div><div><kbd>Del</kbd> delete the selection</div></div>
                             </div>
                         </div>
@@ -317,6 +488,8 @@ class MossLayoutEditor {
             this.inH.value = h;
             setSize();
         });
+        this.connectPromptField(this.inCaption);
+        this.connectPromptField(this.inMeta);
         this.inCaption.addEventListener('input', () => { this.draft.summary.caption = this.inCaption.value; this.save(); });
         this.inMeta.addEventListener('input', () => { this.setList(this.draft.summary, 'meta', this.inMeta.value); this.save(); });
         this.inCaption.addEventListener('change', () => this.commit());
@@ -372,7 +545,7 @@ class MossLayoutEditor {
             }
         }
         // If the prompt box holds a layout prompt that the editor does not, offer to start from it.
-        if ((this.parseCompiled(this.box.value) || this.parseDraft(this.box.value)) && this.box.value.trim() != this.lastApplied) {
+        if ((this.parseCompiled(this.box.value) || this.parseDraft(this.box.value)) && this.box.value.trim() != this.lastApplied && !this.promptIsDraft()) {
             if (confirm('The prompt box holds a MOSS layout prompt. Load it into the editor?')) {
                 this.loadFromPrompt();
             }
@@ -382,6 +555,15 @@ class MossLayoutEditor {
         this.commit();
         $(this.modal).modal('show');
         setTimeout(() => this.render(), 200);
+    }
+
+    promptIsDraft() {
+        try {
+            return this.box.value.trim() == this.compile();
+        }
+        catch (e) {
+            return false;
+        }
     }
 
     swarmSize() {
@@ -421,6 +603,8 @@ class MossLayoutEditor {
 
     /** Records the draft for undo, if it changed. */
     commit() {
+        this.pruneGroups();
+        this.pruneLinks();
         let state = JSON.stringify(this.draft);
         if (this.history[this.historyIndex] == state) {
             return;
@@ -496,7 +680,8 @@ class MossLayoutEditor {
             div.dataset.index = i;
             let title = document.createElement('div');
             title.className = 'moss-layout-box-title';
-            title.innerText = `${i + 1} · ${item.label}` + (item.label == 'text' && item.text ? ` "${item.text}"` : '');
+            let letter = this.groupLetter(item);
+            title.innerText = (letter ? `${letter} · ` : '') + (item.link !== undefined ? '🔗 ' : '') + `${i + 1} · ${item.label}` + (item.label == 'text' && item.text ? ` "${item.text}"` : '');
             let body = document.createElement('div');
             body.className = 'moss-layout-box-body';
             body.innerText = item.caption || '';
@@ -610,7 +795,8 @@ class MossLayoutEditor {
                 + `<button type="button" class="basic-button" data-act="down" title="Move to front">▼</button>`
                 + `<button type="button" class="basic-button" data-act="dup" title="Duplicate">⧉</button>`
                 + `<button type="button" class="basic-button" data-act="del" title="Delete">✕</button>`;
-            row.querySelector('.moss-layout-item-name').innerText = `${i + 1} · ${item.label}: ${item.label == 'text' ? `"${item.text || ''}"` : (item.caption || '').slice(0, 40)}`;
+            let rowLetter = this.groupLetter(item);
+            row.querySelector('.moss-layout-item-name').innerText = (rowLetter ? `${rowLetter} · ` : '') + (item.link !== undefined ? '🔗 ' : '') + `${i + 1} · ${item.label}: ${item.label == 'text' ? `"${item.text || ''}"` : (item.caption || '').slice(0, 40)}`;
             row.addEventListener('click', e => {
                 let act = e.target.dataset.act;
                 if (act == 'del') {
@@ -654,8 +840,32 @@ class MossLayoutEditor {
     }
 
     renderItemEditor() {
+        this.closeSuggestions();
         if (this.selection.length > 1) {
-            this.itemEditor.innerHTML = `<div class="moss-layout-hint">${this.selection.length} boxes selected: move, scale, copy or delete them together. Select one to edit its text.</div>`;
+            let first = this.draft.items[this.selection[0]];
+            let group = this.groupOf(first);
+            let whole = group && this.selection.every(i => this.draft.items[i].group == group.id) && this.selection.length == this.draft.items.filter(x => x.group == group.id).length;
+            this.itemEditor.innerHTML = '';
+            if (whole) {
+                this.addGroupField(group, 'Ungroup');
+                this.addHint('Click one of its boxes again to edit that part.');
+                return;
+            }
+            this.addHint(`${this.selection.length} boxes selected: move, scale, copy or delete them together. Select one to edit its text.`);
+            let button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'basic-button';
+            button.innerText = 'Group as one character (Ctrl+G)';
+            button.title = 'Give these boxes one shared prompt, added to the caption of each of them when you Apply';
+            button.addEventListener('click', () => this.groupSelected());
+            this.itemEditor.appendChild(button);
+            let link = document.createElement('button');
+            link.type = 'button';
+            link.className = 'basic-button';
+            link.innerText = 'Link their captions (Ctrl+L)';
+            link.title = 'They take the caption of the last selected box. Edit it in any of them and all change. They still move on their own.';
+            link.addEventListener('click', () => this.linkSelected());
+            this.itemEditor.appendChild(link);
             return;
         }
         let item = this.draft.items[this.selected];
@@ -687,14 +897,69 @@ class MossLayoutEditor {
                 else {
                     item[key] = input.value;
                 }
+                if (key == 'caption') {
+                    this.linkedTo(item).forEach(x => x.caption = input.value);
+                }
                 if (key == 'label') {
                     refreshText();
                 }
                 this.render();
             });
             input.addEventListener('change', () => this.commit());
+            if (key == 'caption' || key == 'tags') {
+                this.connectPromptField(input);
+            }
         }
         refreshText();
+        let group = item && this.groupOf(item);
+        if (group) {
+            this.addGroupField(group, 'Take this box out of the group');
+            this.itemEditor.prepend(this.itemEditor.lastChild);
+            this.itemEditor.querySelector('[data-key=caption]').placeholder = 'Only what is special to this part, e.g. Her left arm, ending at the ring.';
+            this.itemEditor.querySelector('[data-key=caption]').closest('label').firstChild.textContent = 'This part ';
+        }
+        let linked = this.linkedTo(item).length;
+        if (linked) {
+            let label = this.itemEditor.querySelector('[data-key=caption]').closest('label');
+            label.firstChild.textContent = `${label.firstChild.textContent.trim()}: linked, same in ${linked} boxes `;
+            let button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'basic-button moss-layout-ungroup';
+            button.innerText = 'Unlink this box';
+            button.addEventListener('click', e => { e.preventDefault(); this.unlinkSelected(); });
+            label.appendChild(button);
+        }
+    }
+
+    addHint(text) {
+        let hint = document.createElement('div');
+        hint.className = 'moss-layout-hint';
+        hint.innerText = text;
+        this.itemEditor.appendChild(hint);
+    }
+
+    /** The prompt a group shares, and the button that ends the grouping. */
+    addGroupField(group, buttonText) {
+        let count = this.draft.items.filter(x => x.group == group.id).length;
+        let field = document.createElement('label');
+        field.className = 'moss-layout-field moss-layout-fill';
+        field.innerText = `Character ${String.fromCharCode(65 + this.draft.groups.indexOf(group) % 26)}: shared by ${count} boxes `;
+        let text = document.createElement('textarea');
+        text.className = 'auto-text moss-layout-big';
+        text.rows = 6;
+        text.placeholder = 'Who this is: appearance, clothes, expression. Apply puts it before the caption of each of these boxes.';
+        text.value = group.caption || '';
+        text.addEventListener('input', () => { group.caption = text.value; this.save(); });
+        text.addEventListener('change', () => this.commit());
+        this.connectPromptField(text);
+        field.appendChild(text);
+        let button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'basic-button moss-layout-ungroup';
+        button.innerText = buttonText;
+        button.addEventListener('click', e => { e.preventDefault(); this.ungroupSelected(); });
+        field.appendChild(button);
+        this.itemEditor.appendChild(field);
     }
 
     removeItem(i) {
@@ -740,12 +1005,15 @@ class MossLayoutEditor {
     /** Adds copies of these items, shifted, and selects them. */
     insertCopies(items, dx, dy) {
         let first = this.draft.items.length;
+        let copies = [];
         for (let item of items) {
             let copy = JSON.parse(JSON.stringify(item));
             let b = copy.bbox;
             copy.bbox = [b[0] + dx, b[1] + dy, b[2] + dx, b[3] + dy];
-            this.draft.items.push(copy);
+            copies.push(copy);
         }
+        this.regroupCopies(copies);
+        this.draft.items.push(...copies);
         this.selection = items.map((item, i) => first + i);
         this.render();
         this.renderItemEditor();
@@ -798,11 +1066,27 @@ class MossLayoutEditor {
         else if (ctrl && key == 'd') {
             this.duplicateSelected();
         }
+        else if (ctrl && key == 'g') {
+            if (e.shiftKey) {
+                this.ungroupSelected();
+            }
+            else {
+                this.groupSelected();
+            }
+        }
+        else if (ctrl && key == 'l') {
+            if (e.shiftKey) {
+                this.unlinkSelected();
+            }
+            else {
+                this.linkSelected();
+            }
+        }
         else if (ctrl && key == 'c' && item) {
-            this.clipboard = JSON.parse(JSON.stringify(this.selection.map(i => this.draft.items[i])));
+            this.copyToClipboard();
         }
         else if (ctrl && key == 'x' && item) {
-            this.clipboard = JSON.parse(JSON.stringify(this.selection.map(i => this.draft.items[i])));
+            this.copyToClipboard();
             this.removeItems(this.selection);
         }
         else if (ctrl && key == 'v' && this.clipboard) {
@@ -811,7 +1095,7 @@ class MossLayoutEditor {
             let fit = this.fitted([b[0] + 32, b[1] + 32, b[2] + 32, b[3] + 32]);
             this.insertCopies(this.clipboard, fit[0] - b[0], fit[1] - b[1]);
             // The next paste steps on from this one.
-            this.clipboard = JSON.parse(JSON.stringify(this.selection.map(i => this.draft.items[i])));
+            this.copyToClipboard();
         }
         else if (e.key == 'Delete' && item) {
             this.removeItems(this.selection);
@@ -882,7 +1166,7 @@ class MossLayoutEditor {
             let wasSelected = this.selection.includes(i);
             // Ctrl waits for the release: a click toggles the box, a drag copies.
             if (!wasSelected && !ctrl) {
-                this.selected = i;
+                this.selectBox(i);
                 this.repeat = null;
             }
             let dir = e.target.dataset.dir;
@@ -964,7 +1248,7 @@ class MossLayoutEditor {
     startMove() {
         let drag = this.drag;
         if (!drag.wasSelected) {
-            this.selected = drag.hit;
+            this.selectBox(drag.hit);
             this.repeat = null;
         }
         drag.sources = [...this.selection];
@@ -983,12 +1267,14 @@ class MossLayoutEditor {
             let copies = drag.sources.map(i => JSON.parse(JSON.stringify(this.draft.items[i])));
             drag.sources.forEach((i, n) => this.draft.items[i].bbox = [...drag.origs[n]]);
             let first = this.draft.items.length;
+            this.regroupCopies(copies);
             this.draft.items.push(...copies);
             drag.moving = copies.map((c, n) => first + n);
         }
         else {
             drag.sources.forEach((i, n) => this.draft.items[i].bbox = this.draft.items[drag.moving[n]].bbox);
             this.draft.items.length -= drag.moving.length;
+            this.pruneGroups();
             drag.moving = drag.sources;
         }
         drag.copying = on;
@@ -1007,6 +1293,17 @@ class MossLayoutEditor {
                 inside.push(i);
             }
         });
+        // A frame that touches one box of a group takes the group.
+        for (let i of [...inside]) {
+            let group = this.draft.items[i].group;
+            if (group !== undefined) {
+                this.draft.items.forEach((item, j) => {
+                    if (item.group == group && !inside.includes(j) && !drag.base.includes(j)) {
+                        inside.push(j);
+                    }
+                });
+            }
+        }
         this.selection = [...drag.base, ...inside];
     }
 
@@ -1175,7 +1472,7 @@ class MossLayoutEditor {
             if (drag.ctrlPress) {
                 this.toggleSelected(drag.hit);
             }
-            else if (this.selection.length > 1) {
+            else if (drag.wasSelected && this.selection.length > 1) {
                 this.selected = drag.hit;
                 this.repeat = null;
             }
@@ -1214,6 +1511,7 @@ class MossLayoutEditor {
         else if (drag.moved) {
             if (drag.copying) {
                 this.draft.items.length -= drag.moving.length;
+                this.pruneGroups();
             }
             drag.sources.forEach((i, n) => this.draft.items[i].bbox = [...drag.origs[n]]);
             this.selection = [...drag.sources];
@@ -1241,14 +1539,16 @@ class MossLayoutEditor {
             }
         }
         let items = d.items.map((item, i) => {
-            if (!item.caption || !item.caption.trim()) {
+            let group = this.groupOf(item);
+            let caption = [group ? group.caption : '', item.caption].map(c => (c || '').trim()).filter(c => c).join(' ');
+            if (!caption) {
                 throw `Box ${i + 1} has no caption.`;
             }
             if (item.label == 'text' && !(item.text || '').trim()) {
                 throw `Box ${i + 1} is a text box without exact text.`;
             }
             let [x1, y1, x2, y2] = item.bbox;
-            let out = { label: item.label, caption: item.caption };
+            let out = { label: item.label, caption: caption };
             if (item.label == 'text') {
                 out.text = item.text;
             }

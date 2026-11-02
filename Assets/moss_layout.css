@@ -255,6 +255,16 @@
     resize: vertical;
     overflow-y: auto;
 }
+/* Swarm's list of suggestions is as wide as its longest line, and these fields stand at the right of the window. */
+#moss_layout_modal #popover_prompt_suggest {
+    width: clamp(320px, 34vw, 640px);
+    max-width: calc(100vw - 16px);
+    white-space: normal;
+}
+.moss-layout-ungroup {
+    align-self: flex-start;
+    margin-top: 0.2rem;
+}
 /* Every action, always on screen under the canvas. */
 .moss-layout-legend {
     display: grid;
