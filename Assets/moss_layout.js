@@ -182,9 +182,10 @@ class MossLayoutEditor {
     constructor() {
         this.storageKey = 'moss_layout_draft';
         this.draft = this.emptyDraft(1344, 768);
-        this.selected = -1;
+        this.selection = [];
         this.drag = null;
         this.guides = [];
+        this.marquee = null;
         this.clipboard = null;
         this.repeat = null;
         this.history = [];
@@ -209,6 +210,21 @@ class MossLayoutEditor {
         window.addEventListener('resize', place);
     }
 
+    /** The box the side panel edits: the last one selected, or -1. */
+    get selected() {
+        return this.selection.length ? this.selection[this.selection.length - 1] : -1;
+    }
+
+    set selected(index) {
+        this.selection = index >= 0 ? [index] : [];
+    }
+
+    /** The smallest box around these boxes. */
+    boundsOf(indices) {
+        let boxes = indices.map(i => this.draft.items[i].bbox);
+        return [Math.min(...boxes.map(b => b[0])), Math.min(...boxes.map(b => b[1])), Math.max(...boxes.map(b => b[2])), Math.max(...boxes.map(b => b[3]))];
+    }
+
     emptyDraft(width, height) {
         return { width: width, height: height, bbox_coord_space: 'abs', bbox_format: 'xyxy', summary: { caption: '' }, items: [] };
     }
@@ -226,17 +242,27 @@ class MossLayoutEditor {
                                 <label>W <input type="number" class="auto-number" id="moss_layout_w" step="16" min="256"></label>
                                 <label>H <input type="number" class="auto-number" id="moss_layout_h" step="16" min="256"></label>
                                 <button type="button" class="basic-button" id="moss_layout_from_swarm" title="Take width and height from the Generate tab">⟵ Swarm size</button>
+                                <button type="button" class="basic-button" id="moss_layout_duplicate" title="Copy the selection (Ctrl+D)">⧉ Duplicate</button>
+                                <button type="button" class="basic-button" id="moss_layout_undo" title="Undo (Ctrl+Z)">↶ Undo</button>
+                                <button type="button" class="basic-button" id="moss_layout_redo" title="Redo (Ctrl+Y)">↷ Redo</button>
                                 <label title="Snap box edges to a 16 px grid when no smart guide is in reach"><input type="checkbox" id="moss_layout_snap" checked> snap 16</label>
                                 <label title="Snap to other boxes and the canvas: alignment, equal spacing, equal distance from an edge, equal size"><input type="checkbox" id="moss_layout_smart" checked> smart guides</label>
-                                <span class="moss-layout-hint moss-layout-keys">Drag: move · handles: resize (Shift: keep ratio, Alt: from center) · Alt or Ctrl + drag: copy · Shift + drag: straight line · Ctrl+D: copy again by the same step · Ctrl+C/V · Ctrl+Z/Y · arrows: 1 px (Shift: 16) · Esc: cancel the drag · Del</span>
                             </div>
                             <div class="moss-layout-stage-wrap" id="moss_layout_stage_wrap">
                                 <div class="moss-layout-stage" id="moss_layout_stage"></div>
                             </div>
+                            <div class="moss-layout-legend">
+                                <div class="moss-layout-legend-group"><b>Draw</b><div><kbd>Drag empty space</kbd> new box</div><div><kbd>Shift + drag</kbd> square</div></div>
+                                <div class="moss-layout-legend-group"><b>Select</b><div><kbd>Click</kbd> one box</div><div><kbd>Ctrl + click</kbd> add or remove</div><div><kbd>Ctrl + drag empty space</kbd> select with a frame</div><div><kbd>Ctrl+A</kbd> all</div><div><kbd>Click empty space</kbd> none</div></div>
+                                <div class="moss-layout-legend-group"><b>Move</b><div><kbd>Drag</kbd> move the selection</div><div><kbd>Shift + drag</kbd> straight line</div><div><kbd>Arrows</kbd> 1 px</div><div><kbd>Shift + arrows</kbd> 16 px</div><div><kbd>Esc</kbd> cancel the drag</div></div>
+                                <div class="moss-layout-legend-group"><b>Copy</b><div><kbd>Alt or Ctrl + drag</kbd> copy</div><div><kbd>Alt + Shift + drag</kbd> copy in a straight line</div><div><kbd>Ctrl+D</kbd> copy again by the same step</div><div><kbd>Ctrl+C / X / V</kbd> copy, cut, paste</div></div>
+                                <div class="moss-layout-legend-group"><b>Resize</b><div><kbd>Drag a handle</kbd> resize</div><div><kbd>Shift + corner</kbd> keep the ratio</div><div><kbd>Alt + handle</kbd> from the center</div><div><kbd>Handles of a group</kbd> scale all of it</div></div>
+                                <div class="moss-layout-legend-group"><b>Edit</b><div><kbd>Ctrl+Z / Ctrl+Y</kbd> undo, redo</div><div><kbd>Del</kbd> delete the selection</div></div>
+                            </div>
                         </div>
                         <div class="moss-layout-right">
-                            <label class="moss-layout-field">Scene caption (summary)
-                                <textarea class="auto-text" id="moss_layout_caption" rows="4" placeholder="Global description of the whole image: setting, style, lighting..."></textarea>
+                            <label class="moss-layout-field moss-layout-fill">Scene caption (summary)
+                                <textarea class="auto-text moss-layout-big" id="moss_layout_caption" rows="9" placeholder="Global description of the whole image: setting, style, lighting..."></textarea>
                             </label>
                             <div class="moss-layout-row">
                                 <label class="moss-layout-field moss-layout-grow">Meta tags <input type="text" class="auto-text" id="moss_layout_meta" placeholder="anime illustration, poster"></label>
@@ -251,8 +277,8 @@ class MossLayoutEditor {
                         <span class="moss-layout-error" id="moss_layout_error"></span>
                         <button type="button" class="btn btn-secondary basic-button" id="moss_layout_load_prompt" title="Read a layout prompt that is already in the prompt box back into the editor">Load from prompt</button>
                         <button type="button" class="btn btn-secondary basic-button" id="moss_layout_json" title="Show or paste the editable draft JSON">Draft JSON</button>
-                        <button type="button" class="btn btn-secondary basic-button" id="moss_layout_clear">Clear</button>
-                        <button type="button" class="btn btn-primary basic-button" id="moss_layout_apply">Apply to prompt</button>
+                        <button type="button" class="btn btn-secondary basic-button" id="moss_layout_clear" title="Remove all boxes and the scene caption">Clear</button>
+                        <button type="button" class="btn btn-primary basic-button" id="moss_layout_apply" title="Write the compiled layout into the prompt box and set the image size">Apply to prompt</button>
                         <button type="button" class="btn btn-secondary basic-button" id="moss_layout_close">Close</button>
                     </div>
                 </div>
@@ -271,6 +297,11 @@ class MossLayoutEditor {
         this.inCanvas = getRequiredElementById('moss_layout_canvas');
         this.inSnap = getRequiredElementById('moss_layout_snap');
         this.inSmart = getRequiredElementById('moss_layout_smart');
+        this.undoButton = getRequiredElementById('moss_layout_undo');
+        this.redoButton = getRequiredElementById('moss_layout_redo');
+        getRequiredElementById('moss_layout_duplicate').addEventListener('click', () => this.duplicateSelected());
+        this.undoButton.addEventListener('click', () => this.travel(-1));
+        this.redoButton.addEventListener('click', () => this.travel(1));
         let setSize = () => {
             this.draft.width = this.roundSize(this.inW.value);
             this.draft.height = this.roundSize(this.inH.value);
@@ -400,6 +431,12 @@ class MossLayoutEditor {
             this.history.shift();
         }
         this.historyIndex = this.history.length - 1;
+        this.refreshUndo();
+    }
+
+    refreshUndo() {
+        this.undoButton.disabled = this.historyIndex <= 0;
+        this.redoButton.disabled = this.historyIndex >= this.history.length - 1;
     }
 
     /** Moves through the undo history: -1 undoes, +1 redoes. */
@@ -409,8 +446,9 @@ class MossLayoutEditor {
             return;
         }
         this.historyIndex = index;
+        this.refreshUndo();
         this.draft = JSON.parse(this.history[index]);
-        this.selected = Math.min(this.selected, this.draft.items.length - 1);
+        this.selection = this.selection.filter(i => i < this.draft.items.length);
         this.repeat = null;
         this.syncInputs();
         this.render();
@@ -446,10 +484,11 @@ class MossLayoutEditor {
         this.stage.style.height = `${this.draft.height * s}px`;
         this.stage.style.backgroundSize = `${16 * 4 * s}px ${16 * 4 * s}px`;
         this.stage.innerHTML = '';
+        this.stage.classList.toggle('moss-layout-several', this.selection.length > 1);
         this.draft.items.forEach((item, i) => {
             let [x1, y1, x2, y2] = item.bbox;
             let div = document.createElement('div');
-            div.className = `moss-layout-box moss-layout-${item.label}` + (i == this.selected ? ' moss-layout-selected' : '');
+            div.className = `moss-layout-box moss-layout-${item.label}` + (this.selection.includes(i) ? ' moss-layout-selected' : '');
             div.style.left = `${x1 * s}px`;
             div.style.top = `${y1 * s}px`;
             div.style.width = `${(x2 - x1) * s}px`;
@@ -470,9 +509,31 @@ class MossLayoutEditor {
             }
             this.stage.appendChild(div);
         });
+        this.renderGroupFrame(s);
         this.renderGuides(s);
         this.renderList();
         this.save();
+    }
+
+    /** The frame around several selected boxes; its handles scale them all. */
+    renderGroupFrame(s) {
+        if (this.selection.length < 2) {
+            return;
+        }
+        let [x1, y1, x2, y2] = this.boundsOf(this.selection);
+        let frame = document.createElement('div');
+        frame.className = 'moss-layout-group-frame';
+        frame.style.left = `${x1 * s}px`;
+        frame.style.top = `${y1 * s}px`;
+        frame.style.width = `${(x2 - x1) * s}px`;
+        frame.style.height = `${(y2 - y1) * s}px`;
+        for (let dir of ['n', 's', 'w', 'e', 'nw', 'ne', 'sw', 'se']) {
+            let handle = document.createElement('div');
+            handle.className = `moss-layout-handle moss-layout-handle-${dir}`;
+            handle.dataset.dir = dir;
+            frame.appendChild(handle);
+        }
+        this.stage.appendChild(frame);
     }
 
     renderGuides(s) {
@@ -522,8 +583,12 @@ class MossLayoutEditor {
                 place('moss-layout-guide-size moss-layout-guide-size-y', g.cross, g.start, null, g.end - g.start, length);
             }
         }
-        if (this.drag && this.drag.moved && this.draft.items[this.drag.index]) {
-            let [x1, y1, x2, y2] = this.draft.items[this.drag.index].bbox;
+        if (this.marquee) {
+            let [x1, y1, x2, y2] = this.marquee;
+            place('moss-layout-guide-marquee', x1, y1, x2 - x1, y2 - y1, null);
+        }
+        if (this.drag && this.drag.moved && this.drag.moving && this.drag.moving.length) {
+            let [x1, y1, x2, y2] = this.boundsOf(this.drag.moving);
             let tag = document.createElement('div');
             tag.className = 'moss-layout-guide-dims';
             tag.innerText = `${x1}, ${y1} · ${x2 - x1} × ${y2 - y1}`;
@@ -538,7 +603,7 @@ class MossLayoutEditor {
         this.itemsList.innerHTML = '';
         this.draft.items.forEach((item, i) => {
             let row = document.createElement('div');
-            row.className = `moss-layout-item-row moss-layout-${item.label}` + (i == this.selected ? ' moss-layout-selected' : '');
+            row.className = `moss-layout-item-row moss-layout-${item.label}` + (this.selection.includes(i) ? ' moss-layout-selected' : '');
             let [x1, y1, x2, y2] = item.bbox;
             row.innerHTML = `<span class="moss-layout-item-name"></span><span class="moss-layout-item-dims">${x1},${y1} → ${x2},${y2}</span>`
                 + `<button type="button" class="basic-button" data-act="up" title="Move back">▲</button>`
@@ -564,6 +629,9 @@ class MossLayoutEditor {
                         this.selected = j;
                     }
                 }
+                else if (e.ctrlKey || e.metaKey) {
+                    this.toggleSelected(i);
+                }
                 else {
                     this.selected = i;
                 }
@@ -575,7 +643,21 @@ class MossLayoutEditor {
         });
     }
 
+    toggleSelected(i) {
+        if (this.selection.includes(i)) {
+            this.selection = this.selection.filter(j => j != i);
+        }
+        else {
+            this.selection.push(i);
+        }
+        this.repeat = null;
+    }
+
     renderItemEditor() {
+        if (this.selection.length > 1) {
+            this.itemEditor.innerHTML = `<div class="moss-layout-hint">${this.selection.length} boxes selected: move, scale, copy or delete them together. Select one to edit its text.</div>`;
+            return;
+        }
         let item = this.draft.items[this.selected];
         if (!item) {
             this.itemEditor.innerHTML = '<div class="moss-layout-hint">Draw a box on the canvas, or click one to edit it.</div>';
@@ -583,13 +665,13 @@ class MossLayoutEditor {
         }
         this.itemEditor.innerHTML = `
             <div class="moss-layout-row">
-                <label class="moss-layout-field">Type <select class="auto-dropdown" data-key="label"><option>character</option><option>object</option><option>text</option></select></label>
-                <span class="moss-layout-hint">Box ${this.selected + 1}</span>
+                <label class="moss-layout-field">Box ${this.selected + 1} <select class="auto-dropdown" data-key="label"><option>character</option><option>object</option><option>text</option></select></label>
+                <label class="moss-layout-field moss-layout-grow">Tags <input type="text" class="auto-text" data-key="tags" placeholder="optional, comma separated"></label>
+                <label class="moss-layout-field moss-layout-grow">Palette <input type="text" class="auto-text" data-key="palette" placeholder="optional, e.g. #ffffff, navy"></label>
             </div>
-            <label class="moss-layout-field">Caption <textarea class="auto-text" rows="4" data-key="caption" placeholder="What is in this box and how it looks (for text: font, color, style)"></textarea></label>
-            <label class="moss-layout-field moss-layout-text-field">Exact text <textarea class="auto-text" rows="2" data-key="text" placeholder="The literal characters to render; Enter = line break"></textarea></label>
-            <label class="moss-layout-field">Tags <input type="text" class="auto-text" data-key="tags" placeholder="optional, comma separated"></label>
-            <label class="moss-layout-field">Palette <input type="text" class="auto-text" data-key="palette" placeholder="optional, e.g. #ffffff, deep navy"></label>`;
+            <label class="moss-layout-field moss-layout-fill">Caption <textarea class="auto-text moss-layout-big" rows="9" data-key="caption" placeholder="What is in this box and how it looks (for text: font, color, style)"></textarea></label>
+            <label class="moss-layout-field moss-layout-text-field">Exact text <textarea class="auto-text moss-layout-medium" rows="4" data-key="text" placeholder="The literal characters to render; Enter = line break"></textarea></label>
+`;
         let textField = this.itemEditor.querySelector('.moss-layout-text-field');
         let refreshText = () => textField.style.display = item.label == 'text' ? '' : 'none';
         for (let input of this.itemEditor.querySelectorAll('[data-key]')) {
@@ -616,33 +698,36 @@ class MossLayoutEditor {
     }
 
     removeItem(i) {
-        this.draft.items.splice(i, 1);
-        this.selected = Math.min(this.selected, this.draft.items.length - 1);
-        if (this.selected == i) {
-            this.selected = -1;
-        }
+        this.removeItems([i]);
+    }
+
+    removeItems(indices) {
+        this.draft.items = this.draft.items.filter((item, i) => !indices.includes(i));
+        // The boxes that stay selected keep their place in the selection, under their new numbers.
+        this.selection = this.selection.filter(i => !indices.includes(i)).map(i => i - indices.filter(j => j < i).length);
+        this.repeat = null;
         this.render();
         this.renderItemEditor();
         this.commit();
     }
 
-    /** Adds a copy of the selected box. After a copy made by dragging, this repeats the same step, so a row stays evenly spaced. */
+    /** Adds copies of the selected boxes. After copies made by dragging, this repeats the same step, so a row stays evenly spaced. */
     duplicateSelected() {
-        let item = this.draft.items[this.selected];
-        if (!item) {
+        if (!this.selection.length) {
             return;
         }
-        let step = this.repeat && this.repeat.index == this.selected ? this.repeat.step : null;
-        let bbox = [...item.bbox];
-        let [dx, dy] = step || [32, 32];
-        let shifted = [bbox[0] + dx, bbox[1] + dy, bbox[2] + dx, bbox[3] + dy];
-        if (step && (shifted[0] < 0 || shifted[1] < 0 || shifted[2] > this.draft.width || shifted[3] > this.draft.height)) {
+        let same = this.repeat && this.repeat.indices.join() == this.selection.join();
+        let [dx, dy] = same ? this.repeat.step : [32, 32];
+        let b = this.boundsOf(this.selection);
+        let shifted = [b[0] + dx, b[1] + dy, b[2] + dx, b[3] + dy];
+        if (same && (shifted[0] < 0 || shifted[1] < 0 || shifted[2] > this.draft.width || shifted[3] > this.draft.height)) {
             this.errorBox.innerText = 'The next copy by this step would leave the canvas.';
             return;
         }
         this.errorBox.innerText = '';
-        this.insertCopy(item, this.fitted(shifted));
-        this.repeat = { index: this.selected, step: [dx, dy] };
+        let fit = this.fitted(shifted);
+        this.insertCopies(this.selection.map(i => this.draft.items[i]), fit[0] - b[0], fit[1] - b[1]);
+        this.repeat = { indices: [...this.selection], step: [dx, dy] };
     }
 
     /** A box shifted back inside the canvas, its size kept. */
@@ -652,11 +737,16 @@ class MossLayoutEditor {
         return [b[0] + dx, b[1] + dy, b[2] + dx, b[3] + dy];
     }
 
-    insertCopy(item, bbox) {
-        let copy = JSON.parse(JSON.stringify(item));
-        copy.bbox = bbox;
-        this.draft.items.push(copy);
-        this.selected = this.draft.items.length - 1;
+    /** Adds copies of these items, shifted, and selects them. */
+    insertCopies(items, dx, dy) {
+        let first = this.draft.items.length;
+        for (let item of items) {
+            let copy = JSON.parse(JSON.stringify(item));
+            let b = copy.bbox;
+            copy.bbox = [b[0] + dx, b[1] + dy, b[2] + dx, b[3] + dy];
+            this.draft.items.push(copy);
+        }
+        this.selection = items.map((item, i) => first + i);
         this.render();
         this.renderItemEditor();
         this.commit();
@@ -666,7 +756,15 @@ class MossLayoutEditor {
         if (!this.modal || !this.modal.classList.contains('show')) {
             return;
         }
+        let ctrl = e.ctrlKey || e.metaKey;
+        // On a non-Latin layout e.key is the local letter (Ctrl+A gives 'ф'), so go by the physical key there.
+        let key = /^[a-z]$/i.test(e.key) || !(e.code || '').startsWith('Key') ? e.key.toLowerCase() : e.code.slice(3).toLowerCase();
+        // Browsers bind Ctrl+D to a bookmark, and it means nothing in text, so it stays ours wherever the focus is.
+        let duplicate = ctrl && key == 'd';
         if (this.drag) {
+            if (duplicate) {
+                e.preventDefault();
+            }
             this.modifierChanged(e);
             if (e.key == 'Escape') {
                 e.preventDefault();
@@ -678,12 +776,12 @@ class MossLayoutEditor {
             }
             return;
         }
-        if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) {
+        // A clicked checkbox or dropdown keeps the focus, but only text fields have a use for Ctrl+A and the like. A dropdown still needs its arrows.
+        let tag = e.target.tagName;
+        if (!duplicate && (tag == 'TEXTAREA' || (tag == 'INPUT' && e.target.type != 'checkbox') || (tag == 'SELECT' && !ctrl))) {
             return;
         }
         let handled = true;
-        let ctrl = e.ctrlKey || e.metaKey;
-        let key = e.key.toLowerCase();
         let item = this.draft.items[this.selected];
         if (ctrl && key == 'z') {
             this.travel(e.shiftKey ? 1 : -1);
@@ -691,30 +789,43 @@ class MossLayoutEditor {
         else if (ctrl && key == 'y') {
             this.travel(1);
         }
+        else if (ctrl && key == 'a') {
+            this.selection = this.draft.items.map((it, i) => i);
+            this.repeat = null;
+            this.render();
+            this.renderItemEditor();
+        }
         else if (ctrl && key == 'd') {
             this.duplicateSelected();
         }
         else if (ctrl && key == 'c' && item) {
-            this.clipboard = JSON.parse(JSON.stringify(item));
+            this.clipboard = JSON.parse(JSON.stringify(this.selection.map(i => this.draft.items[i])));
         }
         else if (ctrl && key == 'x' && item) {
-            this.clipboard = JSON.parse(JSON.stringify(item));
-            this.removeItem(this.selected);
+            this.clipboard = JSON.parse(JSON.stringify(this.selection.map(i => this.draft.items[i])));
+            this.removeItems(this.selection);
         }
         else if (ctrl && key == 'v' && this.clipboard) {
-            let b = this.clipboard.bbox;
-            this.insertCopy(this.clipboard, this.fitted([b[0] + 32, b[1] + 32, b[2] + 32, b[3] + 32]));
-            this.clipboard = JSON.parse(JSON.stringify(this.draft.items[this.selected]));
+            let boxes = this.clipboard.map(c => c.bbox);
+            let b = [Math.min(...boxes.map(x => x[0])), Math.min(...boxes.map(x => x[1])), Math.max(...boxes.map(x => x[2])), Math.max(...boxes.map(x => x[3]))];
+            let fit = this.fitted([b[0] + 32, b[1] + 32, b[2] + 32, b[3] + 32]);
+            this.insertCopies(this.clipboard, fit[0] - b[0], fit[1] - b[1]);
+            // The next paste steps on from this one.
+            this.clipboard = JSON.parse(JSON.stringify(this.selection.map(i => this.draft.items[i])));
         }
         else if (e.key == 'Delete' && item) {
-            this.removeItem(this.selected);
+            this.removeItems(this.selection);
         }
         else if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key) && item) {
             let by = e.shiftKey ? 16 : 1;
             let dx = e.key == 'ArrowLeft' ? -by : e.key == 'ArrowRight' ? by : 0;
             let dy = e.key == 'ArrowUp' ? -by : e.key == 'ArrowDown' ? by : 0;
-            let b = item.bbox;
-            item.bbox = this.fitted([b[0] + dx, b[1] + dy, b[2] + dx, b[3] + dy]);
+            let b = this.boundsOf(this.selection);
+            let fit = this.fitted([b[0] + dx, b[1] + dy, b[2] + dx, b[3] + dy]);
+            for (let i of this.selection) {
+                let box = this.draft.items[i].bbox;
+                this.draft.items[i].bbox = [box[0] + fit[0] - b[0], box[1] + fit[1] - b[1], box[2] + fit[0] - b[0], box[3] + fit[1] - b[1]];
+            }
             this.repeat = null;
             this.render();
             this.commit();
@@ -756,22 +867,42 @@ class MossLayoutEditor {
         }
         let [x, y] = this.point(e);
         this.pointer = { x: x, y: y, shift: e.shiftKey, alt: e.altKey, ctrl: e.ctrlKey || e.metaKey, screenX: e.clientX, screenY: e.clientY };
+        let ctrl = e.ctrlKey || e.metaKey;
         let boxDiv = e.target.closest('.moss-layout-box');
-        if (boxDiv) {
+        if (e.target.closest('.moss-layout-group-frame')) {
+            let moving = [...this.selection];
+            let origs = moving.map(i => [...this.draft.items[i].bbox]);
+            let orig = this.boundsOf(moving);
+            // No box of the group may shrink below 16 px.
+            let minLength = [0, 1].map(axis => Math.ceil((orig[axis + 2] - orig[axis]) * 16 / Math.min(...origs.map(b => b[axis + 2] - b[axis]))));
+            this.drag = { mode: 'resize', dir: e.target.dataset.dir, moving: moving, origs: origs, orig: orig, minLength: minLength, start: [x, y], screen: [e.clientX, e.clientY], moved: false };
+        }
+        else if (boxDiv) {
             let i = parseInt(boxDiv.dataset.index);
-            if (i != this.selected) {
+            let wasSelected = this.selection.includes(i);
+            // Ctrl waits for the release: a click toggles the box, a drag copies.
+            if (!wasSelected && !ctrl) {
+                this.selected = i;
                 this.repeat = null;
             }
-            this.selected = i;
             let dir = e.target.dataset.dir;
-            this.drag = { mode: dir ? 'resize' : 'move', dir: dir, index: i, source: i, start: [x, y], screen: [e.clientX, e.clientY], orig: [...this.draft.items[i].bbox], moved: false, copying: false };
+            if (dir) {
+                let orig = [...this.draft.items[i].bbox];
+                this.drag = { mode: 'resize', dir: dir, moving: [i], origs: [orig], orig: orig, minLength: [16, 16], start: [x, y], screen: [e.clientX, e.clientY], moved: false };
+            }
+            else {
+                this.drag = { mode: 'move', hit: i, wasSelected: wasSelected, ctrlPress: ctrl, start: [x, y], screen: [e.clientX, e.clientY], moved: false, copying: false };
+            }
+        }
+        else if (ctrl) {
+            this.drag = { mode: 'marquee', start: [x, y], screen: [e.clientX, e.clientY], base: [...this.selection], moved: false };
         }
         else {
             let sx = this.snap(x), sy = this.snap(y);
             this.draft.items.push({ label: 'character', caption: '', bbox: [sx, sy, sx, sy] });
             this.selected = this.draft.items.length - 1;
             this.repeat = null;
-            this.drag = { mode: 'create', index: this.selected, start: [sx, sy], screen: [e.clientX, e.clientY], moved: false };
+            this.drag = { mode: 'create', index: this.selected, moving: [this.selected], start: [sx, sy], screen: [e.clientX, e.clientY], moved: false };
         }
         this.render();
         this.renderItemEditor();
@@ -789,7 +920,7 @@ class MossLayoutEditor {
     /** The still boxes for the current drag. */
     dragContext() {
         if (!this.drag.context) {
-            let others = this.draft.items.filter((item, i) => i != this.drag.index).map(item => item.bbox);
+            let others = this.draft.items.filter((item, i) => !this.drag.moving.includes(i)).map(item => item.bbox);
             this.drag.context = MossLayoutSnap.context(others, this.draft.width, this.draft.height);
         }
         return this.drag.context;
@@ -809,10 +940,16 @@ class MossLayoutEditor {
                 return;
             }
             drag.moved = true;
+            if (drag.mode == 'move') {
+                this.startMove();
+            }
         }
         if (drag.mode == 'move') {
             this.setCopying(p.alt || p.ctrl);
             this.updateMove();
+        }
+        else if (drag.mode == 'marquee') {
+            this.updateMarquee();
         }
         else if (drag.mode == 'resize') {
             this.updateResize();
@@ -823,27 +960,54 @@ class MossLayoutEditor {
         this.render();
     }
 
-    /** Copy on: the original goes back to where it was and the drag carries a new box. Copy off: the new box goes away. */
+    /** The drag has really begun: fixes which boxes it carries and where they stood. */
+    startMove() {
+        let drag = this.drag;
+        if (!drag.wasSelected) {
+            this.selected = drag.hit;
+            this.repeat = null;
+        }
+        drag.sources = [...this.selection];
+        drag.moving = drag.sources;
+        drag.origs = drag.sources.map(i => [...this.draft.items[i].bbox]);
+        drag.orig = this.boundsOf(drag.sources);
+    }
+
+    /** Copy on: the originals go back to where they were and the drag carries new boxes. Copy off: the new boxes go away. */
     setCopying(on) {
         let drag = this.drag;
         if (on == drag.copying) {
             return;
         }
-        let source = this.draft.items[drag.source];
         if (on) {
-            let copy = JSON.parse(JSON.stringify(source));
-            source.bbox = [...drag.orig];
-            this.draft.items.push(copy);
-            drag.index = this.draft.items.length - 1;
+            let copies = drag.sources.map(i => JSON.parse(JSON.stringify(this.draft.items[i])));
+            drag.sources.forEach((i, n) => this.draft.items[i].bbox = [...drag.origs[n]]);
+            let first = this.draft.items.length;
+            this.draft.items.push(...copies);
+            drag.moving = copies.map((c, n) => first + n);
         }
         else {
-            source.bbox = this.draft.items[drag.index].bbox;
-            this.draft.items.splice(drag.index, 1);
-            drag.index = drag.source;
+            drag.sources.forEach((i, n) => this.draft.items[i].bbox = this.draft.items[drag.moving[n]].bbox);
+            this.draft.items.length -= drag.moving.length;
+            drag.moving = drag.sources;
         }
         drag.copying = on;
         drag.context = null;
-        this.selected = drag.index;
+        this.selection = [...drag.moving];
+    }
+
+    updateMarquee() {
+        let p = this.pointer, drag = this.drag;
+        let m = [Math.min(drag.start[0], p.x), Math.min(drag.start[1], p.y), Math.max(drag.start[0], p.x), Math.max(drag.start[1], p.y)];
+        this.marquee = m;
+        let inside = [];
+        this.draft.items.forEach((item, i) => {
+            let b = item.bbox;
+            if (b[0] < m[2] && b[2] > m[0] && b[1] < m[3] && b[3] > m[1] && !drag.base.includes(i)) {
+                inside.push(i);
+            }
+        });
+        this.selection = [...drag.base, ...inside];
     }
 
     updateMove() {
@@ -870,7 +1034,10 @@ class MossLayoutEditor {
             rect[axis] = start;
             rect[axis + 2] = start + len;
         }
-        this.draft.items[drag.index].bbox = rect;
+        drag.moving.forEach((i, n) => {
+            let o = drag.origs[n];
+            this.draft.items[i].bbox = [o[0] + rect[0] - drag.orig[0], o[1] + rect[1] - drag.orig[1], o[2] + rect[0] - drag.orig[0], o[3] + rect[1] - drag.orig[1]];
+        });
         let all = ['start', 'center', 'end'];
         // On a locked axis the box is not going anywhere, so its spacing there is not news.
         this.guides = !this.inSmart.checked ? [] : MossLayoutSnap.guides(ctx, rect, [all, all], [false, false]).filter(g => g.type != 'gap' || g.axis != locked);
@@ -911,7 +1078,7 @@ class MossLayoutEditor {
         if (keepRatio) {
             this.followRatio(rect, sides, ruling, p.alt);
         }
-        this.draft.items[drag.index].bbox = rect;
+        this.applyScale(rect);
         if (!this.inSmart.checked) {
             this.guides = [];
             return;
@@ -920,17 +1087,28 @@ class MossLayoutEditor {
         this.guides = MossLayoutSnap.guides(ctx, rect, anchors, anchors.map(a => a.length > 0));
     }
 
-    /** Keeps a dragged edge on the canvas and at least 16 px from the opposite edge, or from the center when resizing from it. */
+    /** Fits every dragged box into its share of the new frame. Each edge rounds on its own, so boxes that touched still touch. */
+    applyScale(rect) {
+        let drag = this.drag, o = drag.orig;
+        let sx = (rect[2] - rect[0]) / (o[2] - o[0]), sy = (rect[3] - rect[1]) / (o[3] - o[1]);
+        drag.moving.forEach((i, n) => {
+            let b = drag.origs[n];
+            this.draft.items[i].bbox = [Math.round(rect[0] + (b[0] - o[0]) * sx), Math.round(rect[1] + (b[1] - o[1]) * sy), Math.round(rect[0] + (b[2] - o[0]) * sx), Math.round(rect[1] + (b[3] - o[1]) * sy)];
+        });
+    }
+
+    /** Keeps a dragged edge on the canvas and clear of the opposite edge, or of the center when resizing from it, by the smallest allowed length. */
     fitEdge(axis, side, value, fromCenter) {
         let o = this.drag.orig;
+        let least = this.drag.minLength[axis];
         let size = axis == 0 ? this.draft.width : this.draft.height;
         let center = (o[axis] + o[axis + 2]) / 2;
         if (side == 'end') {
             let max = fromCenter ? Math.min(size, 2 * center) : size;
-            return Math.min(max, Math.max(value, fromCenter ? Math.ceil(center + 8) : o[axis] + 16));
+            return Math.min(max, Math.max(value, fromCenter ? Math.ceil(center + least / 2) : o[axis] + least));
         }
         let min = fromCenter ? Math.max(0, 2 * center - size) : 0;
-        return Math.max(min, Math.min(value, fromCenter ? Math.floor(center - 8) : o[axis + 2] - 16));
+        return Math.max(min, Math.min(value, fromCenter ? Math.floor(center - least / 2) : o[axis + 2] - least));
     }
 
     /** Sizes the box from its ruling axis at the original ratio, within the canvas. */
@@ -946,7 +1124,7 @@ class MossLayoutEditor {
             }
             return sides[axis] == 'end' ? sizes[axis] - o[axis] : o[axis + 2];
         };
-        scale = Math.max(16 / Math.min(...lengths), Math.min(scale, room(0) / lengths[0], room(1) / lengths[1]));
+        scale = Math.max(this.drag.minLength[0] / lengths[0], this.drag.minLength[1] / lengths[1], Math.min(scale, room(0) / lengths[0], room(1) / lengths[1]));
         for (let axis of [0, 1]) {
             let len = Math.round(lengths[axis] * scale);
             if (fromCenter) {
@@ -993,14 +1171,25 @@ class MossLayoutEditor {
             this.draft.items.splice(drag.index, 1);
             this.selected = -1;
         }
-        if (drag.copying && item) {
-            this.repeat = { index: drag.index, step: [item.bbox[0] - drag.orig[0], item.bbox[1] - drag.orig[1]] };
+        if (drag.mode == 'move' && !drag.moved) {
+            if (drag.ctrlPress) {
+                this.toggleSelected(drag.hit);
+            }
+            else if (this.selection.length > 1) {
+                this.selected = drag.hit;
+                this.repeat = null;
+            }
+        }
+        else if (drag.mode == 'move' && drag.copying) {
+            let b = this.boundsOf(drag.moving);
+            this.repeat = { indices: [...drag.moving], step: [b[0] - drag.orig[0], b[1] - drag.orig[1]] };
         }
         else if (drag.moved) {
             this.repeat = null;
         }
         this.drag = null;
         this.guides = [];
+        this.marquee = null;
         this.render();
         this.renderItemEditor();
         this.commit();
@@ -1016,15 +1205,22 @@ class MossLayoutEditor {
             this.draft.items.splice(drag.index, 1);
             this.selected = -1;
         }
-        else {
+        else if (drag.mode == 'marquee') {
+            this.selection = drag.base;
+        }
+        else if (drag.mode == 'resize') {
+            drag.moving.forEach((i, n) => this.draft.items[i].bbox = [...drag.origs[n]]);
+        }
+        else if (drag.moved) {
             if (drag.copying) {
-                this.draft.items.splice(drag.index, 1);
+                this.draft.items.length -= drag.moving.length;
             }
-            this.draft.items[drag.source].bbox = [...drag.orig];
-            this.selected = drag.source;
+            drag.sources.forEach((i, n) => this.draft.items[i].bbox = [...drag.origs[n]]);
+            this.selection = [...drag.sources];
         }
         this.drag = null;
         this.guides = [];
+        this.marquee = null;
         this.render();
         this.renderItemEditor();
     }

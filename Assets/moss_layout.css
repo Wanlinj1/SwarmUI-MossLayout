@@ -18,7 +18,7 @@
 }
 .moss-layout-dialog .modal-content {
     width: 100%;
-    height: 88vh;
+    height: 94vh;
 }
 .moss-layout-body {
     display: flex;
@@ -34,7 +34,8 @@
     min-width: 0;
 }
 .moss-layout-right {
-    width: 380px;
+    width: clamp(420px, 36%, 640px);
+    flex-shrink: 0;
     display: flex;
     flex-direction: column;
     gap: 0.4rem;
@@ -114,6 +115,10 @@
 .moss-layout-box.moss-layout-selected .moss-layout-handle {
     display: block;
 }
+/* Several selected boxes scale by the handles of their common frame instead. */
+.moss-layout-several .moss-layout-box .moss-layout-handle {
+    display: none;
+}
 .moss-layout-handle-nw { left: -1px; top: -1px; cursor: nwse-resize; }
 .moss-layout-handle-ne { right: -1px; top: -1px; cursor: nesw-resize; }
 .moss-layout-handle-sw { left: -1px; bottom: -1px; cursor: nesw-resize; }
@@ -122,6 +127,27 @@
 .moss-layout-handle-s { left: calc(50% - 6px); bottom: -1px; cursor: ns-resize; }
 .moss-layout-handle-w { left: -1px; top: calc(50% - 6px); cursor: ew-resize; }
 .moss-layout-handle-e { right: -1px; top: calc(50% - 6px); cursor: ew-resize; }
+/* The frame around several selected boxes: only its handles take the pointer, so the boxes under it can still be dragged. */
+.moss-layout-group-frame {
+    position: absolute;
+    box-sizing: border-box;
+    border: 1px dashed #ff2d92;
+    z-index: 11;
+    pointer-events: none;
+    --moss-color: #ff2d92;
+}
+.moss-layout-group-frame .moss-layout-handle {
+    display: block;
+    pointer-events: auto;
+}
+.moss-layout-group-frame .moss-layout-handle-nw { left: -6px; top: -6px; }
+.moss-layout-group-frame .moss-layout-handle-ne { right: -6px; top: -6px; }
+.moss-layout-group-frame .moss-layout-handle-sw { left: -6px; bottom: -6px; }
+.moss-layout-group-frame .moss-layout-handle-se { right: -6px; bottom: -6px; }
+.moss-layout-group-frame .moss-layout-handle-n { top: -6px; }
+.moss-layout-group-frame .moss-layout-handle-s { bottom: -6px; }
+.moss-layout-group-frame .moss-layout-handle-w { left: -6px; }
+.moss-layout-group-frame .moss-layout-handle-e { right: -6px; }
 /* Smart guides, drawn over the boxes: one bright color that stays readable on any theme. */
 .moss-layout-guides {
     position: absolute;
@@ -156,6 +182,12 @@
 }
 .moss-layout-guide-size-x { height: 2px; }
 .moss-layout-guide-size-y { width: 2px; }
+.moss-layout-guide-marquee {
+    position: absolute;
+    box-sizing: border-box;
+    border: 1px solid var(--moss-guide);
+    background: color-mix(in srgb, var(--moss-guide) 12%, transparent);
+}
 .moss-layout-guide-label,
 .moss-layout-guide-dims {
     background: var(--moss-guide);
@@ -191,10 +223,58 @@
     margin-top: 0.4rem;
     font-weight: bold;
 }
+/* A long box list scrolls by itself, so it does not push the text fields out of sight. */
 .moss-layout-items {
     display: flex;
     flex-direction: column;
     gap: 2px;
+    flex-shrink: 0;
+    max-height: 18vh;
+    overflow-y: auto;
+}
+/* The scene and box captions share the column and grow with the window.
+ * !important: SwarmUI sizes its auto-text fields from a single line. */
+.moss-layout-field.moss-layout-fill {
+    flex: 1 1 0;
+    min-height: 8rem;
+}
+.moss-layout-dialog textarea.moss-layout-big {
+    flex: 1 1 auto;
+    min-height: 6rem !important;
+    height: auto !important;
+    width: 100%;
+    box-sizing: border-box;
+    resize: none;
+    overflow-y: auto;
+}
+.moss-layout-dialog textarea.moss-layout-medium {
+    flex-shrink: 0;
+    min-height: 4.5rem !important;
+    width: 100%;
+    box-sizing: border-box;
+    resize: vertical;
+    overflow-y: auto;
+}
+/* Every action, always on screen under the canvas. */
+.moss-layout-legend {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+    gap: 0.3rem 0.8rem;
+    flex-shrink: 0;
+    font-size: 0.78em;
+    line-height: 1.45;
+}
+.moss-layout-legend b {
+    display: block;
+}
+.moss-layout-legend kbd {
+    background: rgba(128, 128, 128, 0.25);
+    color: inherit;
+    border-radius: 3px;
+    padding: 0 0.3em;
+    font-family: inherit;
+    font-size: 1em;
+    white-space: nowrap;
 }
 .moss-layout-item-row {
     display: flex;
@@ -220,6 +300,11 @@
 .moss-layout-item-row button {
     padding: 0 0.4rem;
     min-width: 0;
+}
+/* Only with text fields in it: otherwise the scene caption takes the room. */
+.moss-layout-item-editor:has(textarea) {
+    flex: 1 1 0;
+    min-height: 12rem;
 }
 .moss-layout-item-editor {
     margin-top: 0.4rem;

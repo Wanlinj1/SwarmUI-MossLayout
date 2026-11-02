@@ -21,6 +21,8 @@ It needs nothing else: no extra models, packages or web connections. It only edi
 
 ## Controls
 
+The same list stays on screen under the canvas.
+
 | Action | How |
 |---|---|
 | New box | Drag on empty space (Shift: square) |
@@ -28,16 +30,21 @@ It needs nothing else: no extra models, packages or web connections. It only edi
 | Resize | Drag one of the eight handles |
 | Resize keeping the ratio | Shift + drag a corner |
 | Resize from the center | Alt + drag a handle |
-| Copy | Alt or Ctrl + drag a box |
+| Select several | Ctrl + click boxes, or in the box list |
+| Select with a frame | Ctrl + drag on empty space (every box it touches) |
+| Select all | Ctrl+A |
+| Move several | Drag any selected box. They snap as one group |
+| Scale several | Drag a handle of the frame around them (Shift: keep ratio, Alt: from the center) |
+| Copy | Alt or Ctrl + drag a box, or a selected group |
 | Move or copy in a straight line | Shift while dragging (axis follows the larger movement) |
-| Copy again by the same step | Ctrl+D after a copy made by dragging |
+| Copy again by the same step | Ctrl+D after a copy made by dragging, for a group too |
 | Copy, cut, paste | Ctrl+C, Ctrl+X, Ctrl+V |
-| Undo, redo | Ctrl+Z, Ctrl+Y or Ctrl+Shift+Z |
+| Undo, redo | Ctrl+Z, Ctrl+Y or Ctrl+Shift+Z, or the buttons in the toolbar |
 | Nudge | Arrows: 1 px, Shift + arrows: 16 px |
 | Cancel the drag | Esc |
 | Delete | Del |
 
-Modifiers also work when pressed in the middle of a drag.
+Copy, paste, delete, nudge, undo and Esc all act on the whole selection. Editing the text works on one box at a time. Modifiers also work when pressed in the middle of a drag.
 
 ## Smart guides
 
