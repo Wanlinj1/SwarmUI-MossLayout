@@ -1,0 +1,232 @@
+/* Sits on the top edge of the prompt box, like Prompt Enhancer's button (JS moves it right of that one when present). */
+.moss-layout-button {
+    position: absolute;
+    left: 2.5rem;
+    top: calc(0.5rem - 5px);
+    z-index: 1;
+    padding: 0.2rem 0.8rem;
+    border-radius: 0.7rem;
+    font-weight: bold;
+    font-size: 0.7em;
+    line-height: 1;
+}
+
+/* Editor popup: canvas on the left, scene and box fields on the right. */
+.modal-dialog.moss-layout-dialog {
+    width: min(96vw, 1600px);
+    max-width: min(96vw, 1600px);
+}
+.moss-layout-dialog .modal-content {
+    width: 100%;
+    height: 88vh;
+}
+.moss-layout-body {
+    display: flex;
+    gap: 0.8rem;
+    flex: 1;
+    min-height: 0;
+}
+.moss-layout-left {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    min-width: 0;
+}
+.moss-layout-right {
+    width: 380px;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    overflow-y: auto;
+}
+.moss-layout-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+}
+.moss-layout-toolbar input[type=number] {
+    width: 5.5rem;
+}
+.moss-layout-hint {
+    opacity: 0.65;
+    font-size: 0.85em;
+}
+.moss-layout-stage-wrap {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.moss-layout-stage {
+    position: relative;
+    border: 2px solid var(--light-border, #888);
+    background-color: rgba(128, 128, 128, 0.12);
+    background-image: linear-gradient(rgba(128, 128, 128, 0.18) 1px, transparent 1px), linear-gradient(90deg, rgba(128, 128, 128, 0.18) 1px, transparent 1px);
+    cursor: crosshair;
+    user-select: none;
+    touch-action: none;
+    overflow: hidden;
+}
+.moss-layout-box {
+    position: absolute;
+    border: 2px solid var(--moss-color);
+    background: color-mix(in srgb, var(--moss-color) 18%, transparent);
+    cursor: move;
+    overflow: hidden;
+    font-size: 12px;
+    line-height: 1.25;
+}
+.moss-layout-box.moss-layout-selected {
+    border-width: 3px;
+    background: color-mix(in srgb, var(--moss-color) 30%, transparent);
+    z-index: 5;
+}
+.moss-layout-character { --moss-color: #f59e0b; }
+.moss-layout-object { --moss-color: #3b82f6; }
+.moss-layout-text { --moss-color: #22c55e; }
+.moss-layout-box-title {
+    background: var(--moss-color);
+    color: #000;
+    font-weight: bold;
+    padding: 0 14px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.moss-layout-box-body {
+    padding: 2px 4px;
+    color: var(--text, #eee);
+    text-shadow: 0 0 3px #000;
+}
+.moss-layout-handle {
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    background: var(--moss-color);
+    border: 1px solid #000;
+    display: none;
+}
+.moss-layout-box:hover .moss-layout-handle,
+.moss-layout-box.moss-layout-selected .moss-layout-handle {
+    display: block;
+}
+.moss-layout-handle-nw { left: -1px; top: -1px; cursor: nwse-resize; }
+.moss-layout-handle-ne { right: -1px; top: -1px; cursor: nesw-resize; }
+.moss-layout-handle-sw { left: -1px; bottom: -1px; cursor: nesw-resize; }
+.moss-layout-handle-se { right: -1px; bottom: -1px; cursor: nwse-resize; }
+.moss-layout-handle-n { left: calc(50% - 6px); top: -1px; cursor: ns-resize; }
+.moss-layout-handle-s { left: calc(50% - 6px); bottom: -1px; cursor: ns-resize; }
+.moss-layout-handle-w { left: -1px; top: calc(50% - 6px); cursor: ew-resize; }
+.moss-layout-handle-e { right: -1px; top: calc(50% - 6px); cursor: ew-resize; }
+/* Smart guides, drawn over the boxes: one bright color that stays readable on any theme. */
+.moss-layout-guides {
+    position: absolute;
+    inset: 0;
+    z-index: 10;
+    pointer-events: none;
+    --moss-guide: #ff2d92;
+}
+.moss-layout-guide-line {
+    position: absolute;
+    background: var(--moss-guide);
+}
+.moss-layout-guide-v { width: 1px; }
+.moss-layout-guide-h { height: 1px; }
+.moss-layout-guide-gap {
+    position: absolute;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: color-mix(in srgb, var(--moss-guide) 28%, transparent);
+    border: 0 solid var(--moss-guide);
+    box-sizing: border-box;
+}
+.moss-layout-guide-gap-x { border-left-width: 1px; border-right-width: 1px; }
+.moss-layout-guide-gap-y { border-top-width: 1px; border-bottom-width: 1px; }
+.moss-layout-guide-size {
+    position: absolute;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--moss-guide);
+}
+.moss-layout-guide-size-x { height: 2px; }
+.moss-layout-guide-size-y { width: 2px; }
+.moss-layout-guide-label,
+.moss-layout-guide-dims {
+    background: var(--moss-guide);
+    color: #fff;
+    font-size: 11px;
+    line-height: 1;
+    padding: 2px 4px;
+    border-radius: 3px;
+    white-space: nowrap;
+}
+.moss-layout-guide-dims {
+    position: absolute;
+    margin-top: 3px;
+}
+.moss-layout-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    width: 100%;
+}
+.moss-layout-row {
+    display: flex;
+    gap: 0.5rem;
+    align-items: flex-end;
+}
+.moss-layout-row .moss-layout-field {
+    width: auto;
+}
+.moss-layout-grow {
+    flex: 1;
+}
+.moss-layout-items-head {
+    margin-top: 0.4rem;
+    font-weight: bold;
+}
+.moss-layout-items {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.moss-layout-item-row {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 2px 4px;
+    border-left: 4px solid var(--moss-color);
+    cursor: pointer;
+}
+.moss-layout-item-row.moss-layout-selected {
+    background: color-mix(in srgb, var(--moss-color) 25%, transparent);
+}
+.moss-layout-item-name {
+    flex: 1;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+.moss-layout-item-dims {
+    opacity: 0.6;
+    font-size: 0.8em;
+}
+.moss-layout-item-row button {
+    padding: 0 0.4rem;
+    min-width: 0;
+}
+.moss-layout-item-editor {
+    margin-top: 0.4rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+.moss-layout-error {
+    color: #f87171;
+    margin-right: auto;
+}

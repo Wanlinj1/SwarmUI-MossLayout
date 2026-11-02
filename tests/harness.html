@@ -1,0 +1,35 @@
+<!doctype html>
+<!-- The editor outside SwarmUI, to try it in a browser: from the extension folder run
+     python -m http.server 7886  and open http://localhost:7886/tests/harness.html -->
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>MOSS Layout harness</title>
+    <link rel="stylesheet" href="../Assets/moss_layout.css">
+    <style>
+        html, body { margin: 0; height: 100%; background: #1c1c22; color: #eee; font-family: sans-serif; }
+        #alt_prompt_region { position: relative; padding: 2rem 1rem 1rem; }
+        #alt_prompt_textbox { width: 90%; height: 3rem; }
+        .modal { display: none; }
+        .modal.show { display: block; position: fixed; inset: 0; }
+        .modal-dialog { margin: 1vh auto; }
+        .modal-content { display: flex; flex-direction: column; background: #26262e; }
+        .modal-footer { display: flex; gap: 0.5rem; justify-content: flex-end; padding: 0.5rem; }
+    </style>
+</head>
+<body>
+    <div id="alt_prompt_region"><textarea id="alt_prompt_textbox"></textarea></div>
+    <input id="input_width" value="1536" type="hidden"><input id="input_height" value="1024" type="hidden">
+    <script>
+        // Only what the editor needs from SwarmUI's page.
+        function getRequiredElementById(id) { return document.getElementById(id); }
+        function triggerChangeFor(el) { el.dispatchEvent(new Event('change')); }
+        function $(el) { return { modal: mode => el.classList.toggle('show', mode == 'show') }; }
+    </script>
+    <script src="../Assets/moss_layout.js"></script>
+    <script>
+        try { localStorage.removeItem('moss_layout_draft'); } catch (e) { }
+        mossLayoutEditor.open();
+    </script>
+</body>
+</html>
